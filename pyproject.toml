@@ -1,0 +1,113 @@
+[project]
+name = "rrm-backend"
+version = "0.1.0"
+description = "Research Resource Manager - API-ul REST (FastAPI)"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi==0.162.4",
+    "uvicorn[standard]==0.54.0",
+    "pydantic==2.14.3",
+    "pydantic-settings==2.16.2",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2==2.16.0",
+    "mypy==2.4.1",
+    "pre-commit==4.7.0",
+    "pytest==9.2.0",
+    "ruff==0.17.4",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+# -----------------------------------------------------------------------------
+# Coding style backend (Confluence): PEP 8, verificat automat cu Ruff și mypy.
+# Orice modificare a regulilor de mai jos se face într-un tichet separat și se
+# actualizează și pagina „Coding style backend” din Confluence.
+# -----------------------------------------------------------------------------
+[tool.ruff]
+line-length = 99
+target-version = "py313"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+    "E",       # pycodestyle - erori PEP 8
+    "W",       # pycodestyle - avertismente PEP 8
+    "F",       # Pyflakes - variabile și importuri nefolosite
+    "I",       # isort - ordinea importurilor
+    "N",       # pep8-naming - convențiile de denumire
+    "D",       # pydocstyle - docstring-uri
+    "UP",      # pyupgrade - sintaxă Python modernă
+    "B",       # flake8-bugbear - greșeli frecvente
+    "SIM",     # flake8-simplify - cod mai simplu
+    "C4",      # flake8-comprehensions
+    "C90",     # mccabe - complexitatea funcțiilor
+    "PLR0911", # prea multe return-uri
+    "PLR0912", # prea multe ramuri
+    "PLR0913", # prea mulți parametri
+    "PLR0915", # funcții prea lungi
+    "T20",     # fără print() în cod
+    "ERA",     # fără cod comentat
+    "S",       # flake8-bandit - securitate
+    "RET",     # return-uri consecvente
+    "PTH",     # pathlib în loc de os.path
+    "FAST",    # reguli FastAPI
+    "RUF",     # reguli Ruff
+]
+ignore = [
+    "D100", # docstring de modul: opțional
+    "D104", # docstring de pachet: opțional
+    "D105", # metode magice: fără docstring
+    "D107", # __init__: documentat în docstring-ul clasei
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "scripts", "tests"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 6
+max-statements = 40
+max-returns = 4
+max-branches = 10
+
+[tool.ruff.lint.flake8-bugbear]
+# Dependențele FastAPI se declară ca valori implicite (Depends, Query).
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "S101", "PLR2004"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["app", "scripts", "tests"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+pythonpath = ["."]

@@ -1,0 +1,61 @@
+# Verificările obligatorii pentru fiecare pull request spre main.
+# Regulile de protecție ale branch-ului main cer ca job-urile de mai jos să treacă
+# înainte de merge, deci coding style-ul nu poate fi ocolit.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conventions:
+    name: Convenții (branch și titlu PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: "Branch KAN-<număr>-<titlu> și titlu PR KAN-<număr>: ..."
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BRANCH: ${{ github.head_ref }}
+        run: python scripts/check_git_conventions.py pr-title "$PR_TITLE" "$BRANCH"
+
+  lint:
+    name: Coding style (Ruff, mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.14"
+      - run: uv sync --locked
+      - name: Formatare (ruff format)
+        run: uv run ruff format --check
+      - name: Reguli PEP 8 și ale echipei (ruff check)
+        run: uv run ruff check --output-format=github
+      - name: Tipuri (mypy strict)
+        run: uv run mypy
+
+  test:
+    name: Teste (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.14"
+      - run: uv sync --locked
+      - run: uv run pytest
