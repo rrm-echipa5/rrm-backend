@@ -52,10 +52,27 @@ jobs:
   test:
     name: Teste (pytest)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: rrm
+          POSTGRES_USER: rrm
+          POSTGRES_PASSWORD: rrm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rrm -d rrm"
+          --health-interval 5s
+          --health-retries 10
+    env:
+      RRM_DATABASE_URL: postgresql+psycopg://rrm:rrm@localhost:5432/rrm
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10
         with:
           python-version: "3.14"
       - run: uv sync --locked
+      - name: Schema și datele de test
+        run: psql postgresql://rrm:rrm@localhost:5432/rrm -v ON_ERROR_STOP=1 -q -f db/schema.sql -f db/seed.sql
       - run: uv run pytest

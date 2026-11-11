@@ -1,0 +1,27 @@
+# Research Resource Manager - baza de date locală (KAN-86, pornind de la KAN-56)
+# Pornire:  docker compose up -d
+# La prima pornire, PostgreSQL rulează în ordine scripturile din /docker-entrypoint-initdb.d:
+# 01-schema.sql (tabelele) și 02-seed.sql (datele de test).
+# Reîncărcarea datelor de test de la zero:  docker compose down -v && docker compose up -d
+# Conexiune: postgresql://rrm:rrm@localhost:5432/rrm
+services:
+  db:
+    image: postgres:18
+    container_name: rrm-db
+    environment:
+      POSTGRES_DB: rrm
+      POSTGRES_USER: rrm
+      POSTGRES_PASSWORD: rrm
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      - rrm-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rrm -d rrm"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  rrm-data:
