@@ -1,0 +1,53 @@
+# Verificările locale ale coding style-ului (pagina „Coding style backend” din Confluence).
+# Instalare, o singură dată după clonare:
+#   uv run pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push
+# Aceleași verificări rulează în GitHub Actions la fiecare pull request, deci un commit care
+# ocolește hook-urile (git commit --no-verify) tot nu poate ajunge în main.
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: no-commit-to-branch
+        args: [--branch, main, --branch, master]
+
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix --exit-non-zero-on-fix
+        language: system
+        types: [python]
+      - id: mypy
+        name: mypy (strict)
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: commit-message
+        name: "mesajul de commit (KAN-<număr>: ...)"
+        entry: python scripts/check_git_conventions.py commit-msg
+        language: system
+        stages: [commit-msg]
+      - id: branch-name
+        name: numele branch-ului (KAN-<număr>-<titlu>)
+        entry: python scripts/check_git_conventions.py branch
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
