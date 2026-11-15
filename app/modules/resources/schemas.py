@@ -79,12 +79,26 @@ class ResourceSummary(ApiModel):
     user_certified: bool = False
 
 
+class UsageRuleOut(ApiModel):
+    """Regulile de utilizare ale resursei, cu fluxul de aprobare (`UsageRule`)."""
+
+    min_duration_minutes: int
+    max_duration_minutes: int
+    break_between_minutes: int
+    check_in_deadline_minutes: int
+    required_certification_level: int | None
+    approval_flow: ApprovalFlow
+    updated_at: datetime
+    updated_by: UserRef | None
+
+
 class ResourceDetail(ResourceSummary):
-    """Fișa resursei (`ResourceDetail`), fără regulile și fișierele din KAN-88 și KAN-89."""
+    """Fișa resursei (`ResourceDetail`), fără fișierele (KAN-89) și mentenanța."""
 
     description: str | None
     specifications: dict[str, str]
     administrator: UserRef
+    usage_rule: UsageRuleOut
     check_in_qr_code: str | None
     created_at: datetime
     updated_at: datetime

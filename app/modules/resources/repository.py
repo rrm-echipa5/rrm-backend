@@ -77,7 +77,11 @@ class ResourceRepository:
 
     def user_exists(self, user_id: int) -> bool:
         """Verifică dacă există utilizatorul cu id-ul dat."""
-        return self._session.get(User, user_id) is not None
+        return self.find_user(user_id) is not None
+
+    def find_user(self, user_id: int) -> User | None:
+        """Întoarce utilizatorul cu id-ul dat sau `None`."""
+        return self._session.get(User, user_id)
 
     def find_page(
         self, resource_filter: ResourceFilter, page: int, size: int
