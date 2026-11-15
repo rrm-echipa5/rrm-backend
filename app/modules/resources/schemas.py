@@ -74,6 +74,9 @@ class ResourceSummary(ApiModel):
     status: ResourceStatus
     approval_flow: ApprovalFlow
     tags: list[str]
+    # Dacă utilizatorul curent are o certificare valabilă pentru resursă; se completează în
+    # serviciu, din vederea `certification_statuses`.
+    user_certified: bool = False
 
 
 class ResourceDetail(ResourceSummary):

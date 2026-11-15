@@ -27,6 +27,8 @@ VALIDATION_MESSAGES = {
     "int_parsing": "Valoarea trebuie să fie un număr întreg.",
     "int_type": "Valoarea trebuie să fie un număr întreg.",
     "string_type": "Valoarea trebuie să fie un text.",
+    "bool_parsing": "Valoarea trebuie să fie true sau false.",
+    "bool_type": "Valoarea trebuie să fie true sau false.",
     "enum": "Valoarea nu este permisă. Valori posibile: {expected}.",
     "literal_error": "Valoarea nu este permisă. Valori posibile: {expected}.",
     "string_pattern_mismatch": "Valoarea nu are formatul cerut.",
