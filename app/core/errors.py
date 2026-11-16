@@ -34,6 +34,10 @@ VALIDATION_MESSAGES = {
     "string_pattern_mismatch": "Valoarea nu are formatul cerut.",
     "dict_type": "Valoarea trebuie să fie un obiect cu perechi denumire - valoare.",
     "list_type": "Valoarea trebuie să fie o listă.",
+    "datetime_parsing": "Valoarea trebuie să fie o dată și o oră ISO 8601.",
+    "datetime_from_date_parsing": "Valoarea trebuie să fie o dată și o oră ISO 8601.",
+    "datetime_type": "Valoarea trebuie să fie o dată și o oră ISO 8601.",
+    "timezone_aware": "Data trebuie să conțină fusul orar, de exemplu +02:00.",
 }
 
 

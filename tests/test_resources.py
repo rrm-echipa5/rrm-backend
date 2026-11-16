@@ -1,14 +1,11 @@
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
-from app.core.config import Settings, get_settings
-from app.main import app
 
 SEM_ID = 7
 TEM_ID = 9
@@ -23,17 +20,6 @@ STUDENT_IOANA = 5  # certificare valabilă pentru SEM, revocată pentru TEM
 RESEARCHER_RADU = 6  # fără certificări în datele de test
 ADMIN_MIHAI = 4  # utilizatorul implicit; administrează SEM, TEM și Raman
 ADMIN_VLAD = 7  # administrează HPC și sala de seminar
-
-
-@pytest.fixture
-def as_user() -> Iterator[Callable[[int], None]]:
-    """Face cererile în numele altui utilizator decât cel implicit (Mihai Ionescu, id 4)."""
-
-    def switch(user_id: int) -> None:
-        app.dependency_overrides[get_settings] = lambda: Settings(demo_user_id=user_id)
-
-    yield switch
-    app.dependency_overrides.pop(get_settings, None)
 
 
 def new_resource(**overrides: Any) -> dict[str, Any]:
