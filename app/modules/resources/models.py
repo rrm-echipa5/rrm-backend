@@ -48,6 +48,11 @@ class Resource(Base):
         back_populates="resource", lazy="joined", cascade="all, delete-orphan"
     )
 
+    @property
+    def required_certification_level(self) -> int | None:
+        """Nivelul de certificare cerut de reguli, afișat și în catalog."""
+        return self.usage_rule.required_certification_level if self.usage_rule else None
+
 
 # Regulile implicite ale unei resurse noi (`POST /resources` din rrm-api.yaml), aceleași ca
 # valorile implicite ale coloanelor din `usage_rules`.
