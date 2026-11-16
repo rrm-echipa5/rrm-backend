@@ -1,6 +1,17 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, SmallInteger, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Identity,
+    Index,
+    SmallInteger,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -90,3 +101,35 @@ class UsageRule(Base):
     def approval_flow(self) -> str:
         """Fluxul de aprobare al resursei, afișat împreună cu regulile."""
         return self.resource.approval_flow
+
+
+class ResourceFile(Base):
+    """Manualul PDF sau poza unei resurse (tabelul `resource_files`).
+
+    Conținutul stă în stocarea de fișiere; tabelul păstrează doar metadatele.
+    """
+
+    __tablename__ = "resource_files"
+    __table_args__ = (
+        CheckConstraint("type IN ('MANUAL', 'PHOTO')", name="resource_files_type_check"),
+        # Cel mult 20 MB.
+        CheckConstraint(
+            "size_bytes BETWEEN 0 AND 20971520", name="resource_files_size_bytes_check"
+        ),
+        Index("resource_files_resource_idx", "resource_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    resource_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("resources.id", ondelete="CASCADE")
+    )
+    type: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(200))
+    file_name: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    storage_key: Mapped[str] = mapped_column(String(500), unique=True)
+    uploaded_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"))
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
