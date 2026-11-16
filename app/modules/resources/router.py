@@ -53,18 +53,26 @@ def list_resources(  # noqa: PLR0913 - parametrii de filtrare din rrm-api.yaml
     category_id: Annotated[int | None, Query(alias="categoryId", ge=1)] = None,
     statuses: Annotated[list[ResourceStatus] | None, Query(alias="status")] = None,
     q: Annotated[str | None, Query(max_length=100)] = None,
+    tags: Annotated[list[str] | None, Query(alias="tag", max_length=20)] = None,
+    administered_by_me: Annotated[bool, Query(alias="administeredByMe")] = False,
     page: Annotated[int, Query(ge=0)] = 0,
     size: Annotated[int, Query(ge=1, le=100)] = 20,
     sort: Annotated[
         str, Query(pattern=r"^(id|name|location|status|createdAt)(,(asc|desc))?$")
     ] = "name,asc",
 ) -> ResourceSummaryPage:
-    """Catalogul de resurse, paginat, cu filtrele pe categorie, stare și text."""
+    """Catalogul de resurse, paginat, cu filtre pe categorie, stare, text, tag-uri și admin.
+
+    `tag` se poate repeta, iar resursa trebuie să aibă toate tag-urile cerute;
+    `administeredByMe=true` păstrează doar resursele administrate de utilizatorul curent.
+    """
     sort_field, _, direction = sort.partition(",")
     resource_filter = ResourceFilter(
         category_id=category_id,
         statuses=tuple(statuses or ()),
         query=q.strip() if q else None,
+        tags=tuple(dict.fromkeys(tag.strip() for tag in tags or () if tag.strip())),
+        administrator_id=service.current_user_id if administered_by_me else None,
         sort_field=sort_field,
         descending=direction == "desc",
     )

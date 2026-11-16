@@ -32,6 +32,11 @@ class ResourceService:
         self._repository = repository
         self._current_user_id = current_user_id
 
+    @property
+    def current_user_id(self) -> int:
+        """Id-ul utilizatorului în numele căruia se face cererea."""
+        return self._current_user_id
+
     def list_categories(self) -> list[ResourceCategoryOut]:
         """Întoarce categoriile de resurse."""
         return [ResourceCategoryOut.model_validate(c) for c in self._repository.list_categories()]
@@ -39,10 +44,18 @@ class ResourceService:
     def list_resources(
         self, resource_filter: ResourceFilter, page: int, size: int
     ) -> ResourceSummaryPage:
-        """Întoarce o pagină din catalog."""
+        """Întoarce o pagină din catalog, cu `userCertified` pentru utilizatorul curent."""
         items, total = self._repository.find_page(resource_filter, page, size)
+        certified = self._repository.certified_resource_ids(
+            self._current_user_id, [item.id for item in items]
+        )
+        content = []
+        for item in items:
+            summary = ResourceSummary.model_validate(item)
+            summary.user_certified = item.id in certified
+            content.append(summary)
         return ResourceSummaryPage(
-            content=[ResourceSummary.model_validate(item) for item in items],
+            content=content,
             page=PageMeta(
                 page=page,
                 size=size,
@@ -120,6 +133,9 @@ class ResourceService:
 
     def _to_detail(self, resource: Resource) -> ResourceDetail:
         detail = ResourceDetail.model_validate(resource)
+        detail.user_certified = resource.id in self._repository.certified_resource_ids(
+            self._current_user_id, [resource.id]
+        )
         # Codul QR de check-in este vizibil doar pentru administratorul resursei.
         if resource.administrator_id != self._current_user_id:
             detail.check_in_qr_code = None

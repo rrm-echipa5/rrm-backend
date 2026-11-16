@@ -1,13 +1,37 @@
 import re
+from collections.abc import Callable, Iterator
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
+from app.main import app
+
 SEM_ID = 7
+TEM_ID = 9
 HPC_ID = 10
+ROOM_ID = 11
+RAMAN_ID = 12
 UNKNOWN_ID = 999_999
+# Utilizatorii din datele de test (db/seed.sql).
+STUDENT_ANA = 3  # certificări valabile pentru SEM și Raman
+STUDENT_IOANA = 5  # certificare valabilă pentru SEM, revocată pentru TEM
+RESEARCHER_RADU = 6  # fără certificări în datele de test
+ADMIN_VLAD = 7  # administrează HPC și sala de seminar
+
+
+@pytest.fixture
+def as_user() -> Iterator[Callable[[int], None]]:
+    """Face cererile în numele altui utilizator decât cel implicit (Mihai Ionescu, id 4)."""
+
+    def switch(user_id: int) -> None:
+        app.dependency_overrides[get_settings] = lambda: Settings(demo_user_id=user_id)
+
+    yield switch
+    app.dependency_overrides.pop(get_settings, None)
 
 
 def new_resource(**overrides: Any) -> dict[str, Any]:
@@ -220,3 +244,111 @@ def test_delete_resource_with_future_reservation_returns_409(
 
 def test_delete_unknown_resource_returns_404(client: TestClient) -> None:
     assert client.delete(f"/api/resources/{UNKNOWN_ID}").status_code == 404
+
+
+def test_list_resources_filters_by_all_requested_tags(client: TestClient) -> None:
+    one_tag = client.get("/api/resources", params={"tag": "microscopie"}).json()
+    two_tags = client.get("/api/resources", params={"tag": ["hpc", "gpu"]}).json()
+    no_match = client.get("/api/resources", params={"tag": ["hpc", "microscopie"]}).json()
+
+    assert {item["id"] for item in one_tag["content"]} == {SEM_ID, TEM_ID}
+    assert [item["id"] for item in two_tags["content"]] == [HPC_ID]
+    assert no_match["content"] == []
+    assert no_match["page"]["totalElements"] == 0
+
+
+def test_list_resources_filters_by_administered_by_me(
+    client: TestClient, as_user: Callable[[int], None]
+) -> None:
+    by_mihai = client.get("/api/resources", params={"administeredByMe": "true"}).json()
+    as_user(ADMIN_VLAD)
+    by_vlad = client.get("/api/resources", params={"administeredByMe": "true"}).json()
+    everything = client.get("/api/resources", params={"administeredByMe": "false"}).json()
+
+    assert {item["id"] for item in by_mihai["content"]} == {SEM_ID, TEM_ID, RAMAN_ID}
+    assert {item["id"] for item in by_vlad["content"]} == {HPC_ID, ROOM_ID}
+    assert everything["page"]["totalElements"] == 5
+
+
+def test_list_resources_combines_tag_and_administrator_filters(
+    client: TestClient, as_user: Callable[[int], None]
+) -> None:
+    as_user(ADMIN_VLAD)
+    body = client.get(
+        "/api/resources", params={"tag": "microscopie", "administeredByMe": "true"}
+    ).json()
+
+    assert body["content"] == []
+
+
+def test_user_certified_for_a_certified_user(
+    client: TestClient, as_user: Callable[[int], None]
+) -> None:
+    as_user(STUDENT_ANA)
+    catalog = client.get("/api/resources").json()
+
+    certified = {item["id"]: item["userCertified"] for item in catalog["content"]}
+    assert certified == {
+        SEM_ID: True,
+        TEM_ID: False,
+        HPC_ID: False,
+        ROOM_ID: False,
+        RAMAN_ID: True,
+    }
+    assert client.get(f"/api/resources/{SEM_ID}").json()["userCertified"] is True
+
+
+def test_user_certified_is_false_for_a_user_without_certifications(
+    client: TestClient, as_user: Callable[[int], None]
+) -> None:
+    as_user(RESEARCHER_RADU)
+    catalog = client.get("/api/resources").json()
+
+    assert all(item["userCertified"] is False for item in catalog["content"])
+    assert client.get(f"/api/resources/{SEM_ID}").json()["userCertified"] is False
+
+
+def test_user_certified_is_false_for_an_expired_certification(
+    client: TestClient, db_session: Session, as_user: Callable[[int], None]
+) -> None:
+    db_session.execute(
+        text(
+            """
+            INSERT INTO certifications (user_id, resource_id, level, granted_by, expires_at)
+            VALUES (:user_id, :resource_id, 1, 7, current_date - 1)
+            """
+        ),
+        {"user_id": RESEARCHER_RADU, "resource_id": HPC_ID},
+    )
+    as_user(RESEARCHER_RADU)
+
+    body = client.get(f"/api/resources/{HPC_ID}").json()
+
+    assert body["userCertified"] is False
+
+
+def test_user_certified_is_false_for_a_revoked_certification(
+    client: TestClient, as_user: Callable[[int], None]
+) -> None:
+    as_user(STUDENT_IOANA)
+    catalog = client.get("/api/resources", params={"tag": "microscopie"}).json()
+
+    certified = {item["id"]: item["userCertified"] for item in catalog["content"]}
+    assert certified == {SEM_ID: True, TEM_ID: False}
+
+
+def test_list_resources_rejects_too_many_tags(client: TestClient) -> None:
+    response = client.get("/api/resources", params={"tag": [f"t{i}" for i in range(21)]})
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "VALIDATION_FAILED"
+
+
+def test_list_resources_rejects_invalid_administered_by_me(client: TestClient) -> None:
+    response = client.get("/api/resources", params={"administeredByMe": "poate"})
+
+    body = response.json()
+    assert response.status_code == 400
+    assert body["errors"] == [
+        {"field": "administeredByMe", "message": "Valoarea trebuie să fie true sau false."}
+    ]
