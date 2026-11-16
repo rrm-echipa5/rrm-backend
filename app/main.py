@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.db.session import get_session, is_database_available
+from app.modules.reservations.router import router as reservations_router
 from app.modules.resources.router import router as resources_router
 
 
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
         return HealthStatus(status="ok", database="unavailable")
 
     api_router.include_router(resources_router)
+    api_router.include_router(reservations_router)
     app.include_router(api_router)
     return app
 
