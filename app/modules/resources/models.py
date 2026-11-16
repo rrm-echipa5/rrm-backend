@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, SmallInteger, String, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -44,3 +44,49 @@ class Resource(Base):
 
     category: Mapped[ResourceCategory] = relationship(lazy="joined")
     administrator: Mapped[User] = relationship(lazy="joined")
+    usage_rule: Mapped["UsageRule | None"] = relationship(
+        back_populates="resource", lazy="joined", cascade="all, delete-orphan"
+    )
+
+    @property
+    def required_certification_level(self) -> int | None:
+        """Nivelul de certificare cerut de reguli, afișat și în catalog."""
+        return self.usage_rule.required_certification_level if self.usage_rule else None
+
+
+# Regulile implicite ale unei resurse noi (`POST /resources` din rrm-api.yaml), aceleași ca
+# valorile implicite ale coloanelor din `usage_rules`.
+DEFAULT_MIN_DURATION_MINUTES = 30
+DEFAULT_MAX_DURATION_MINUTES = 240
+DEFAULT_BREAK_BETWEEN_MINUTES = 0
+DEFAULT_CHECK_IN_DEADLINE_MINUTES = 15
+
+
+class UsageRule(Base):
+    """Regulile de utilizare ale resursei (tabelul `usage_rules`, 1:1 cu resursa).
+
+    Fluxul de aprobare stă în tabelul `resources`, dar în API face parte din `UsageRule`.
+    """
+
+    __tablename__ = "usage_rules"
+
+    resource_id: Mapped[int] = mapped_column(ForeignKey("resources.id"), primary_key=True)
+    min_duration_minutes: Mapped[int] = mapped_column(default=DEFAULT_MIN_DURATION_MINUTES)
+    max_duration_minutes: Mapped[int] = mapped_column(default=DEFAULT_MAX_DURATION_MINUTES)
+    break_between_minutes: Mapped[int] = mapped_column(default=DEFAULT_BREAK_BETWEEN_MINUTES)
+    check_in_deadline_minutes: Mapped[int] = mapped_column(
+        default=DEFAULT_CHECK_IN_DEADLINE_MINUTES
+    )
+    required_certification_level: Mapped[int | None] = mapped_column(SmallInteger)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_by_id: Mapped[int | None] = mapped_column("updated_by", ForeignKey("users.id"))
+
+    resource: Mapped[Resource] = relationship(back_populates="usage_rule")
+    updated_by: Mapped[User | None] = relationship(lazy="joined")
+
+    @property
+    def approval_flow(self) -> str:
+        """Fluxul de aprobare al resursei, afișat împreună cu regulile."""
+        return self.resource.approval_flow

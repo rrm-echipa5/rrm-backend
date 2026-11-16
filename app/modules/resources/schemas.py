@@ -74,17 +74,58 @@ class ResourceSummary(ApiModel):
     status: ResourceStatus
     approval_flow: ApprovalFlow
     tags: list[str]
+    # Nivelul de certificare cerut; `None` dacă resursa nu cere certificare.
+    required_certification_level: int | None = None
     # Dacă utilizatorul curent are o certificare valabilă pentru resursă; se completează în
     # serviciu, din vederea `certification_statuses`.
     user_certified: bool = False
 
 
+class UsageRuleOut(ApiModel):
+    """Regulile de utilizare ale resursei, cu fluxul de aprobare (`UsageRule`)."""
+
+    min_duration_minutes: int
+    max_duration_minutes: int
+    break_between_minutes: int
+    check_in_deadline_minutes: int
+    required_certification_level: int | None
+    approval_flow: ApprovalFlow
+    updated_at: datetime
+    updated_by: UserRef | None
+
+
+class ResourceFileType(StrEnum):
+    """Tipul unui fișier al resursei."""
+
+    MANUAL = "MANUAL"
+    PHOTO = "PHOTO"
+
+
+class ResourceFileOut(ApiModel):
+    """Un manual PDF sau o poză a resursei (`ResourceFile`)."""
+
+    id: int
+    type: ResourceFileType
+    title: str
+    file_name: str
+    content_type: str
+    size_bytes: int
+    url: str
+    uploaded_at: datetime
+
+
 class ResourceDetail(ResourceSummary):
-    """Fișa resursei (`ResourceDetail`), fără regulile și fișierele din KAN-88 și KAN-89."""
+    """Fișa resursei (`ResourceDetail`), fără mentenanță.
+
+    `files` este obligatoriu în contract; până la încărcarea fișierelor (KAN-89) lista e goală,
+    ca frontend-ul să poată folosi câmpul de pe acum.
+    """
 
     description: str | None
     specifications: dict[str, str]
     administrator: UserRef
+    usage_rule: UsageRuleOut
+    files: list[ResourceFileOut] = Field(default_factory=list)
     check_in_qr_code: str | None
     created_at: datetime
     updated_at: datetime

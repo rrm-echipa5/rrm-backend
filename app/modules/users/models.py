@@ -1,7 +1,18 @@
+from enum import StrEnum
+
 from sqlalchemy import BigInteger, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+
+
+class Role(StrEnum):
+    """Enumerarea `Rol` din diagrama de clase 8.1."""
+
+    STUDENT = "STUDENT"
+    RESEARCHER = "RESEARCHER"
+    RESOURCE_ADMIN = "RESOURCE_ADMIN"
+    SYSTEM_ADMIN = "SYSTEM_ADMIN"
 
 
 class User(Base):

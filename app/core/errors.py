@@ -88,6 +88,13 @@ class NotFoundError(ApiError):
         super().__init__(HTTPStatus.NOT_FOUND, "NOT_FOUND", detail)
 
 
+class ForbiddenError(ApiError):
+    """Rolul utilizatorului nu permite operația (403 `ACCESS_DENIED`)."""
+
+    def __init__(self, detail: str = "Nu ai dreptul să faci această operație.") -> None:
+        super().__init__(HTTPStatus.FORBIDDEN, "ACCESS_DENIED", detail)
+
+
 class ConflictError(ApiError):
     """Starea curentă nu permite operația (409)."""
 
