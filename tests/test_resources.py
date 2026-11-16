@@ -382,6 +382,22 @@ def test_resource_detail_shows_usage_rules(client: TestClient) -> None:
     assert rule["updatedBy"]["name"] == "Mihai Ionescu"
 
 
+def test_catalog_shows_the_required_certification_level(client: TestClient) -> None:
+    content = client.get("/api/resources", params={"size": 100}).json()["content"]
+    levels = {item["id"]: item["requiredCertificationLevel"] for item in content}
+
+    assert levels[SEM_ID] == 2
+    assert levels[TEM_ID] == 3
+    assert levels[HPC_ID] is None
+
+
+def test_resource_detail_has_the_files_list(client: TestClient) -> None:
+    detail = client.get(f"/api/resources/{SEM_ID}").json()
+
+    assert detail["files"] == []
+    assert detail["requiredCertificationLevel"] == 2
+
+
 @pytest.mark.parametrize("user_id", [STUDENT_ANA, RESEARCHER_RADU])
 def test_only_resource_admins_can_create_resources(
     client: TestClient, as_user: Callable[[int], None], user_id: int
