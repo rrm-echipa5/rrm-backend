@@ -22,6 +22,7 @@ PROBLEM_RESPONSES: dict[int | str, dict[str, object]] = {
     code: {"model": Problem, "content": {PROBLEM_MEDIA_TYPE: {}}, "description": description}
     for code, description in [
         (status.HTTP_400_BAD_REQUEST, "Corpul sau parametrii cererii sunt invalizi."),
+        (status.HTTP_403_FORBIDDEN, "Rolul utilizatorului nu permite operația."),
         (status.HTTP_404_NOT_FOUND, "Resursa nu există."),
         (status.HTTP_409_CONFLICT, "Starea resursei nu permite operația."),
     ]
@@ -83,7 +84,11 @@ def list_resources(  # noqa: PLR0913 - parametrii de filtrare din rrm-api.yaml
 def create_resource(
     body: ResourceWriteRequest, service: Service, request: Request, response: Response
 ) -> ResourceDetail:
-    """Adaugă o resursă în catalog; antetul `Location` conține URI-ul ei."""
+    """Adaugă o resursă în catalog, cu regulile implicite; `Location` conține URI-ul ei.
+
+    Roluri: `RESOURCE_ADMIN`, `SYSTEM_ADMIN`; alt administrator decât utilizatorul curent
+    poate alege doar `SYSTEM_ADMIN`.
+    """
     resource = service.create_resource(body)
     response.headers["Location"] = str(request.url_for("get_resource", resource_id=resource.id))
     return resource
@@ -99,7 +104,11 @@ def get_resource(resource_id: ResourceId, service: Service) -> ResourceDetail:
 def update_resource(
     resource_id: ResourceId, body: ResourceWriteRequest, service: Service
 ) -> ResourceDetail:
-    """Modifică fișa resursei."""
+    """Modifică fișa resursei.
+
+    Roluri: administratorul resursei, `SYSTEM_ADMIN`; administratorul îl schimbă doar
+    `SYSTEM_ADMIN`.
+    """
     return service.update_resource(resource_id, body)
 
 
@@ -109,5 +118,5 @@ def update_resource(
     responses=PROBLEM_RESPONSES,
 )
 def delete_resource(resource_id: ResourceId, service: Service) -> None:
-    """Scoate resursa din catalog (ștergere logică)."""
+    """Scoate resursa din catalog (ștergere logică). Rol: `SYSTEM_ADMIN`."""
     service.delete_resource(resource_id)

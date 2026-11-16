@@ -17,9 +17,11 @@ ROOM_ID = 11
 RAMAN_ID = 12
 UNKNOWN_ID = 999_999
 # Utilizatorii din datele de test (db/seed.sql).
+SYSTEM_ADMIN_ELENA = 1
 STUDENT_ANA = 3  # certificări valabile pentru SEM și Raman
 STUDENT_IOANA = 5  # certificare valabilă pentru SEM, revocată pentru TEM
 RESEARCHER_RADU = 6  # fără certificări în datele de test
+ADMIN_MIHAI = 4  # utilizatorul implicit; administrează SEM, TEM și Raman
 ADMIN_VLAD = 7  # administrează HPC și sala de seminar
 
 
@@ -153,8 +155,12 @@ def test_create_resource(client: TestClient) -> None:
     assert [item["id"] for item in catalog["content"]] == [body["id"]]
 
 
-def test_create_resource_with_explicit_administrator(client: TestClient) -> None:
-    body = create(client, administratorId=7)
+def test_create_resource_with_explicit_administrator(
+    client: TestClient, as_user: Callable[[int], None]
+) -> None:
+    as_user(SYSTEM_ADMIN_ELENA)
+
+    body = create(client, administratorId=ADMIN_VLAD)
 
     assert body["administrator"]["name"] == "Vlad Popa"
     assert body["checkInQrCode"] is None
@@ -175,7 +181,11 @@ def test_create_resource_validates_fields(client: TestClient) -> None:
     assert errors["approvalFlow"].startswith("Valoarea nu este permisă.")
 
 
-def test_create_resource_rejects_unknown_category_and_administrator(client: TestClient) -> None:
+def test_create_resource_rejects_unknown_category_and_administrator(
+    client: TestClient, as_user: Callable[[int], None]
+) -> None:
+    as_user(SYSTEM_ADMIN_ELENA)
+
     response = client.post(
         "/api/resources", json=new_resource(categoryId=UNKNOWN_ID, administratorId=UNKNOWN_ID)
     )
@@ -208,8 +218,9 @@ def test_update_unknown_resource_returns_404(client: TestClient) -> None:
     assert response.status_code == 404
 
 
-def test_delete_resource(client: TestClient) -> None:
+def test_delete_resource(client: TestClient, as_user: Callable[[int], None]) -> None:
     created = create(client)
+    as_user(SYSTEM_ADMIN_ELENA)
 
     response = client.delete(f"/api/resources/{created['id']}")
 
@@ -220,7 +231,7 @@ def test_delete_resource(client: TestClient) -> None:
 
 
 def test_delete_resource_with_future_reservation_returns_409(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, as_user: Callable[[int], None]
 ) -> None:
     created = create(client, approvalFlow="AUTO")
     db_session.execute(
@@ -234,6 +245,7 @@ def test_delete_resource_with_future_reservation_returns_409(
         ),
         {"resource_id": created["id"]},
     )
+    as_user(SYSTEM_ADMIN_ELENA)
 
     response = client.delete(f"/api/resources/{created['id']}")
 
@@ -352,3 +364,155 @@ def test_list_resources_rejects_invalid_administered_by_me(client: TestClient) -
     assert body["errors"] == [
         {"field": "administeredByMe", "message": "Valoarea trebuie să fie true sau false."}
     ]
+
+
+def assert_access_denied(response: Any) -> None:
+    assert response.status_code == 403, response.text
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["code"] == "ACCESS_DENIED"
+
+
+def test_create_resource_gets_default_usage_rules(client: TestClient) -> None:
+    body = create(client)
+
+    rule = body["usageRule"]
+    assert rule["minDurationMinutes"] == 30
+    assert rule["maxDurationMinutes"] == 240
+    assert rule["breakBetweenMinutes"] == 0
+    assert rule["checkInDeadlineMinutes"] == 15
+    assert rule["requiredCertificationLevel"] is None
+    assert rule["approvalFlow"] == "COORDINATOR"
+    assert rule["updatedBy"]["id"] == ADMIN_MIHAI
+    assert client.get(f"/api/resources/{body['id']}").json()["usageRule"] == rule
+
+
+def test_resource_detail_shows_usage_rules(client: TestClient) -> None:
+    rule = client.get(f"/api/resources/{SEM_ID}").json()["usageRule"]
+
+    assert rule["minDurationMinutes"] == 30
+    assert rule["breakBetweenMinutes"] == 15
+    assert rule["requiredCertificationLevel"] == 2
+    assert rule["approvalFlow"] == "COORDINATOR_AND_ADMIN"
+    assert rule["updatedBy"]["name"] == "Mihai Ionescu"
+
+
+def test_catalog_shows_the_required_certification_level(client: TestClient) -> None:
+    content = client.get("/api/resources", params={"size": 100}).json()["content"]
+    levels = {item["id"]: item["requiredCertificationLevel"] for item in content}
+
+    assert levels[SEM_ID] == 2
+    assert levels[TEM_ID] == 3
+    assert levels[HPC_ID] is None
+
+
+def test_resource_detail_has_the_files_list(client: TestClient) -> None:
+    detail = client.get(f"/api/resources/{SEM_ID}").json()
+
+    assert detail["files"] == []
+    assert detail["requiredCertificationLevel"] == 2
+
+
+@pytest.mark.parametrize("user_id", [STUDENT_ANA, RESEARCHER_RADU])
+def test_only_resource_admins_can_create_resources(
+    client: TestClient, as_user: Callable[[int], None], user_id: int
+) -> None:
+    as_user(user_id)
+
+    response = client.post("/api/resources", json=new_resource())
+
+    assert_access_denied(response)
+    as_user(SYSTEM_ADMIN_ELENA)
+    catalog = client.get("/api/resources", params={"q": "Prusa"}).json()
+    assert catalog["content"] == []
+
+
+def test_system_admin_can_create_resources(
+    client: TestClient, as_user: Callable[[int], None]
+) -> None:
+    as_user(SYSTEM_ADMIN_ELENA)
+
+    body = create(client)
+
+    assert body["administrator"]["id"] == SYSTEM_ADMIN_ELENA
+
+
+def test_resource_admin_cannot_create_a_resource_for_another_administrator(
+    client: TestClient,
+) -> None:
+    response = client.post("/api/resources", json=new_resource(administratorId=ADMIN_VLAD))
+
+    assert_access_denied(response)
+
+
+def test_resource_admin_can_name_themselves_as_administrator(client: TestClient) -> None:
+    body = create(client, administratorId=ADMIN_MIHAI)
+
+    assert body["administrator"]["id"] == ADMIN_MIHAI
+
+
+@pytest.mark.parametrize("user_id", [ADMIN_VLAD, STUDENT_ANA])
+def test_only_the_resource_administrator_can_update_it(
+    client: TestClient, as_user: Callable[[int], None], user_id: int
+) -> None:
+    as_user(user_id)
+
+    response = client.put(f"/api/resources/{SEM_ID}", json=new_resource())
+
+    assert_access_denied(response)
+    assert client.get(f"/api/resources/{SEM_ID}").json()["name"] == "Microscop electronic SEM"
+
+
+def test_system_admin_can_update_any_resource_and_change_its_administrator(
+    client: TestClient, as_user: Callable[[int], None]
+) -> None:
+    as_user(SYSTEM_ADMIN_ELENA)
+
+    response = client.put(
+        f"/api/resources/{SEM_ID}",
+        json=new_resource(name="Microscop SEM", administratorId=ADMIN_VLAD),
+    )
+
+    body = response.json()
+    assert response.status_code == 200, response.text
+    assert body["name"] == "Microscop SEM"
+    assert body["administrator"]["id"] == ADMIN_VLAD
+
+
+def test_resource_admin_cannot_change_the_administrator(client: TestClient) -> None:
+    response = client.put(
+        f"/api/resources/{SEM_ID}", json=new_resource(administratorId=ADMIN_VLAD)
+    )
+
+    assert_access_denied(response)
+    administrator = client.get(f"/api/resources/{SEM_ID}").json()["administrator"]
+    assert administrator["id"] == ADMIN_MIHAI
+
+
+def test_update_keeps_usage_rules_and_shows_the_new_approval_flow(client: TestClient) -> None:
+    response = client.put(f"/api/resources/{SEM_ID}", json=new_resource(approvalFlow="AUTO"))
+
+    rule = response.json()["usageRule"]
+    assert response.status_code == 200
+    assert rule["approvalFlow"] == "AUTO"
+    assert rule["requiredCertificationLevel"] == 2
+
+
+@pytest.mark.parametrize("user_id", [ADMIN_MIHAI, STUDENT_ANA])
+def test_only_system_admin_can_delete_resources(
+    client: TestClient, as_user: Callable[[int], None], user_id: int
+) -> None:
+    as_user(user_id)
+
+    response = client.delete(f"/api/resources/{RAMAN_ID}")
+
+    assert_access_denied(response)
+    assert client.get(f"/api/resources/{RAMAN_ID}").status_code == 200
+
+
+def test_unknown_resource_returns_404_before_checking_rights(
+    client: TestClient, as_user: Callable[[int], None]
+) -> None:
+    as_user(STUDENT_ANA)
+
+    assert client.put(f"/api/resources/{UNKNOWN_ID}", json=new_resource()).status_code == 404
+    assert client.delete(f"/api/resources/{UNKNOWN_ID}").status_code == 404

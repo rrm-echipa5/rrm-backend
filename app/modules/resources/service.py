@@ -3,8 +3,14 @@ import secrets
 import uuid
 from datetime import UTC, datetime
 
-from app.core.errors import ConflictError, FieldError, NotFoundError, ValidationFailedError
-from app.modules.resources.models import Resource
+from app.core.errors import (
+    ConflictError,
+    FieldError,
+    ForbiddenError,
+    NotFoundError,
+    ValidationFailedError,
+)
+from app.modules.resources.models import Resource, UsageRule
 from app.modules.resources.repository import ResourceFilter, ResourceRepository
 from app.modules.resources.schemas import (
     PageMeta,
@@ -15,13 +21,20 @@ from app.modules.resources.schemas import (
     ResourceSummaryPage,
     ResourceWriteRequest,
 )
+from app.modules.users.models import Role
+
+# Rolurile care pot adăuga resurse în catalog.
+CATALOG_EDITOR_ROLES = frozenset({Role.RESOURCE_ADMIN, Role.SYSTEM_ADMIN})
 
 
 class ResourceService:
     """Regulile de business pentru catalogul de resurse (aplicația inițială, KAN-124).
 
     Până la autentificare (KAN-64), utilizatorul curent este cel din setarea
-    `RRM_DEMO_USER_ID`; verificarea rolurilor se adaugă în KAN-88.
+    `RRM_DEMO_USER_ID`. Drepturile urmează `rrm-api.yaml`: adaugă resurse doar
+    `RESOURCE_ADMIN` și `SYSTEM_ADMIN`, modifică fișa administratorul resursei sau
+    `SYSTEM_ADMIN`, iar administratorul resursei îl schimbă și resursa o scoate din catalog
+    doar `SYSTEM_ADMIN`; altfel răspunsul este 403 `ACCESS_DENIED`.
 
     Args:
         repository: Accesul la resursele din baza de date.
@@ -31,6 +44,7 @@ class ResourceService:
     def __init__(self, repository: ResourceRepository, current_user_id: int) -> None:
         self._repository = repository
         self._current_user_id = current_user_id
+        self._current_role: Role | None = None
 
     @property
     def current_user_id(self) -> int:
@@ -69,13 +83,22 @@ class ResourceService:
         return self._to_detail(self._get_or_raise(resource_id))
 
     def create_resource(self, request: ResourceWriteRequest) -> ResourceDetail:
-        """Adaugă o resursă în catalog, cu starea `ACTIVE` și un cod QR unic pentru check-in."""
+        """Adaugă o resursă în catalog, cu starea `ACTIVE` și regulile de utilizare implicite.
+
+        Primește și un cod QR unic pentru check-in.
+        """
+        if self._role() not in CATALOG_EDITOR_ROLES:
+            raise ForbiddenError("Doar administratorii de resurse pot adăuga resurse în catalog.")
         administrator_id = request.administrator_id or self._current_user_id
+        self._check_administrator_change(self._current_user_id, administrator_id)
         self._validate_references(request.category_id, administrator_id)
         resource = Resource(
             status=ResourceStatus.ACTIVE,
             administrator_id=administrator_id,
             check_in_qr_code=f"RRM-NEW-{uuid.uuid4().hex}",
+            usage_rule=UsageRule(
+                updated_at=datetime.now(UTC), updated_by_id=self._current_user_id
+            ),
         )
         self._apply(resource, request)
         self._repository.add(resource)
@@ -86,7 +109,10 @@ class ResourceService:
     def update_resource(self, resource_id: int, request: ResourceWriteRequest) -> ResourceDetail:
         """Modifică datele descriptive ale resursei; starea nu se schimbă aici."""
         resource = self._get_or_raise(resource_id)
+        if resource.administrator_id != self._current_user_id and not self._is_system_admin():
+            raise ForbiddenError("Doar administratorul resursei poate modifica fișa ei.")
         administrator_id = request.administrator_id or resource.administrator_id
+        self._check_administrator_change(resource.administrator_id, administrator_id)
         self._validate_references(request.category_id, administrator_id)
         self._apply(resource, request)
         resource.administrator_id = administrator_id
@@ -97,6 +123,10 @@ class ResourceService:
     def delete_resource(self, resource_id: int) -> None:
         """Scoate resursa din catalog (ștergere logică), dacă nu are rezervări active."""
         resource = self._get_or_raise(resource_id)
+        if not self._is_system_admin():
+            raise ForbiddenError(
+                "Doar administratorul de sistem poate scoate resurse din catalog."
+            )
         if self._repository.has_active_reservations(resource_id):
             raise ConflictError(
                 "RESOURCE_HAS_RESERVATIONS",
@@ -111,6 +141,22 @@ class ResourceService:
         if resource is None:
             raise NotFoundError(f"Resursa {resource_id} nu există.")
         return resource
+
+    def _role(self) -> Role | None:
+        """Rolul utilizatorului curent, citit o singură dată pe cerere."""
+        if self._current_role is None:
+            user = self._repository.find_user(self._current_user_id)
+            self._current_role = Role(user.role) if user is not None else None
+        return self._current_role
+
+    def _is_system_admin(self) -> bool:
+        return self._role() == Role.SYSTEM_ADMIN
+
+    def _check_administrator_change(self, current_id: int, requested_id: int) -> None:
+        if requested_id != current_id and not self._is_system_admin():
+            raise ForbiddenError(
+                "Doar administratorul de sistem poate schimba administratorul resursei."
+            )
 
     def _validate_references(self, category_id: int, administrator_id: int) -> None:
         errors = []
