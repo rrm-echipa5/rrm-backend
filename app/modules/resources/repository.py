@@ -28,14 +28,31 @@ ACTIVE_RESERVATIONS_QUERY = text(
     """
 )
 
+# Resursele dintre cele date pentru care utilizatorul are o certificare valabilă (`ACTIVE`):
+# nerevocată și neexpirată, după vederea `certification_statuses`.
+CERTIFIED_RESOURCES_QUERY = text(
+    """
+    SELECT resource_id FROM certification_statuses
+    WHERE user_id = :user_id
+      AND resource_id = ANY(:resource_ids)
+      AND status = 'ACTIVE'
+    """
+)
+
 
 @dataclass(frozen=True)
 class ResourceFilter:
-    """Filtrele și sortarea catalogului de resurse."""
+    """Filtrele și sortarea catalogului de resurse.
+
+    `tags` păstrează doar resursele care au toate tag-urile cerute, iar `administrator_id`
+    doar resursele administrate de utilizatorul dat (filtrul `administeredByMe`).
+    """
 
     category_id: int | None = None
     statuses: tuple[str, ...] = ()
     query: str | None = None
+    tags: tuple[str, ...] = ()
+    administrator_id: int | None = None
     sort_field: str = "name"
     descending: bool = False
 
@@ -82,6 +99,16 @@ class ResourceRepository:
         )
         return self._session.scalars(statement).first()
 
+    def certified_resource_ids(self, user_id: int, resource_ids: Sequence[int]) -> set[int]:
+        """Întoarce id-urile resurselor pentru care utilizatorul are o certificare valabilă."""
+        if not resource_ids:
+            return set()
+        rows = self._session.scalars(
+            CERTIFIED_RESOURCES_QUERY,
+            {"user_id": user_id, "resource_ids": list(resource_ids)},
+        )
+        return set(rows)
+
     def has_active_reservations(self, resource_id: int) -> bool:
         """Verifică dacă resursa are cereri în așteptare sau rezervări care nu s-au încheiat."""
         result = self._session.scalar(ACTIVE_RESERVATIONS_QUERY, {"resource_id": resource_id})
@@ -112,5 +139,11 @@ class ResourceRepository:
                     Resource.location.ilike(pattern),
                     cast(Resource.specifications, Text).ilike(pattern),
                 )
+            )
+        if resource_filter.tags:
+            statement = statement.where(Resource.tags.contains(list(resource_filter.tags)))
+        if resource_filter.administrator_id is not None:
+            statement = statement.where(
+                Resource.administrator_id == resource_filter.administrator_id
             )
         return statement
