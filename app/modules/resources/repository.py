@@ -41,7 +41,9 @@ CERTIFIED_RESOURCES_QUERY = text(
 
 # Certificările unui utilizator, cu starea din vederea `certification_statuses`, doar pentru
 # resursele din catalog. Pe fiecare resursă, certificarea nerevocată vine prima, ca fișa
-# resursei din frontend să o găsească înaintea celor revocate.
+# resursei din frontend să o găsească înaintea celor revocate. Ordinea e suficientă doar
+# pentru că indexul unic `certifications_one_open_uq` permite cel mult o certificare
+# nerevocată pe resursă; fără el, una `EXPIRED` mai nouă ar putea ieși înaintea uneia `ACTIVE`.
 USER_CERTIFICATIONS_QUERY = text(
     """
     SELECT c.id, c.level, c.status, c.granted_at, c.expires_at, c.revoked_at, c.revoke_reason,
