@@ -93,12 +93,18 @@ class ReservationService:
                 f"Rezervarea are statusul {reservation.status} și nu mai poate fi anulată.",
             )
         approvers = self._approvers_to_notify(reservation)
+        # Numele celui care anulează se citește o singură dată, pentru toate notificările.
+        canceller = self._repository.find_user(self._current_user_id)
+        canceller_name = canceller.name if canceller else None
         reservation.status = ReservationStatus.CANCELLED
         reservation.cancelled_at = datetime.now(UTC)
         reservation.cancelled_by_id = self._current_user_id
         reservation.cancel_reason = reason or None
         self._repository.add_notifications(
-            [self._cancellation_notice(reservation, approver_id) for approver_id in approvers]
+            [
+                self._cancellation_notice(reservation, approver_id, canceller_name)
+                for approver_id in approvers
+            ]
         )
         self._repository.commit_and_refresh(reservation)
         return self._to_out(reservation)
@@ -119,14 +125,16 @@ class ReservationService:
             if approver_id != self._current_user_id
         ]
 
-    def _cancellation_notice(self, reservation: Reservation, recipient_id: int) -> Notification:
+    @staticmethod
+    def _cancellation_notice(
+        reservation: Reservation, recipient_id: int, canceller_name: str | None
+    ) -> Notification:
         start = reservation.start_at.astimezone(LOCAL_TIMEZONE)
         end = reservation.end_at.astimezone(LOCAL_TIMEZONE)
-        canceller = self._repository.find_user(self._current_user_id)
         body = (
             f"Rezervarea pentru {reservation.resource.name} din {start:%d.%m.%Y}, "
             f"{start:%H:%M}-{end:%H:%M} (solicitant: {reservation.requester.name}) "
-            f"a fost anulată{f' de {canceller.name}' if canceller else ''}."
+            f"a fost anulată{f' de {canceller_name}' if canceller_name else ''}."
         )
         if reservation.cancel_reason:
             body += f" Motiv: {reservation.cancel_reason}"

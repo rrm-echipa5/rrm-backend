@@ -264,6 +264,25 @@ def test_pending_admin_cancel_notifies_the_coordinator_and_the_resource_admin(
     assert notified(db_session, reservation_id) == [COORDINATOR_ANDREI, ADMIN_MIHAI]
 
 
+def test_every_notification_names_the_canceller(
+    client: TestClient, db_session: Session, as_user: Callable[[int], None]
+) -> None:
+    # Numele se citește o singură dată și ajunge în toate notificările, nu doar în prima.
+    reservation_id = add_reservation(db_session, "PENDING_ADMIN")
+    db_session.execute(
+        INSERT_APPROVAL,
+        {"reservation_id": reservation_id, "stage": "COORDINATOR", "approver_id": 2},
+    )
+    as_user(STUDENT_ANA)
+    assert cancel(client, reservation_id).status_code == 200
+    bodies = db_session.scalars(
+        text("SELECT body FROM notifications WHERE reservation_id = :id"),
+        {"id": reservation_id},
+    ).all()
+    assert len(bodies) == 2
+    assert all(body.endswith("a fost anulată de Ana Popescu.") for body in bodies)
+
+
 def test_confirmed_cancel_notifies_the_approvers_who_decided(
     client: TestClient, db_session: Session, as_user: Callable[[int], None]
 ) -> None:
