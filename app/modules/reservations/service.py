@@ -1,13 +1,19 @@
 import math
+from datetime import datetime
 
 from app.core.errors import ForbiddenError, NotFoundError
-from app.modules.reservations.models import Reservation
+from app.modules.reservations.models import Reservation, ReservationStatus
 from app.modules.reservations.repository import ReservationFilter, ReservationRepository
 from app.modules.reservations.schemas import (
+    CalendarEntry,
+    CalendarEntryType,
     Cancellation,
     ReservationOut,
     ReservationSummary,
     ReservationSummaryPage,
+    ResourceCalendar,
+    ResourceRef,
+    UsageRuleSummary,
 )
 from app.modules.resources.schemas import PageMeta, UserRef
 from app.modules.users.models import Role
@@ -62,6 +68,51 @@ class ReservationService:
         if not self._can_view(reservation):
             raise ForbiddenError("Nu ai acces la această rezervare.")
         return self._to_out(reservation)
+
+    def get_calendar(self, resource_id: int, start: datetime, end: datetime) -> ResourceCalendar:
+        """Întoarce intervalele ocupate ale resursei în `[start, end)`, ordonate după început.
+
+        Rezervările altor utilizatori apar fără id; `PENDING_ADMIN` apare ca `PENDING`.
+        """
+        resource = self._repository.find_resource(resource_id)
+        if resource is None:
+            raise NotFoundError(f"Resursa {resource_id} nu există.")
+        entries = [
+            self._reservation_entry(reservation)
+            for reservation in self._repository.find_blocking_reservations(resource_id, start, end)
+        ]
+        entries += [
+            CalendarEntry(
+                start=block.start_at,
+                # O mentenanță fără sfârșit ocupă tot restul intervalului cerut.
+                end=block.end_at or end,
+                type=CalendarEntryType.MAINTENANCE,
+                own=False,
+            )
+            for block in self._repository.find_blocking_maintenance(resource_id, start, end)
+        ]
+        entries.sort(key=lambda entry: (entry.start, entry.end))
+        return ResourceCalendar(
+            resource=ResourceRef.model_validate(resource),
+            start=start,
+            end=end,
+            rules=UsageRuleSummary.model_validate(resource.usage_rule),
+            entries=entries,
+        )
+
+    def _reservation_entry(self, reservation: Reservation) -> CalendarEntry:
+        own = self._is_requester(reservation)
+        if reservation.status == ReservationStatus.PENDING_ADMIN:
+            entry_type = CalendarEntryType.PENDING
+        else:
+            entry_type = CalendarEntryType(reservation.status)
+        return CalendarEntry(
+            start=reservation.start_at,
+            end=reservation.end_at,
+            type=entry_type,
+            own=own,
+            reservation_id=reservation.id if own else None,
+        )
 
     def _get_or_raise(self, reservation_id: int) -> Reservation:
         reservation = self._repository.find_by_id(reservation_id)
