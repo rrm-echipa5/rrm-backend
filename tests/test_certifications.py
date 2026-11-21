@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 STUDENT_ANA = 3  # certificată pentru SEM (nivel 2) și Raman (nivel 1)
 ADMIN_MIHAI = 4  # a acordat toate certificările, dar nu are niciuna
 STUDENT_IOANA = 5  # certificată pentru SEM; certificarea pentru TEM e revocată
+RAMAN = 12
 
 MY_CERTIFICATIONS = "/api/users/me/certifications"
 
@@ -95,6 +96,19 @@ def test_the_active_certification_comes_before_the_revoked_one_for_the_same_reso
         (9, "ACTIVE"),
         (9, "REVOKED"),
     ]
+
+
+def test_resources_removed_from_the_catalog_are_left_out(
+    client: TestClient, db_session: Session, as_user: Callable[[int], None]
+) -> None:
+    db_session.execute(
+        text("UPDATE resources SET deleted_at = now() WHERE id = :id"), {"id": RAMAN}
+    )
+    as_user(STUDENT_ANA)
+
+    response = client.get(MY_CERTIFICATIONS)
+
+    assert [item["resource"]["id"] for item in response.json()] == [7]
 
 
 def test_a_user_without_certifications_gets_an_empty_list(

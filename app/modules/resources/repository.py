@@ -39,9 +39,9 @@ CERTIFIED_RESOURCES_QUERY = text(
     """
 )
 
-# Certificările unui utilizator, cu starea din vederea `certification_statuses`. Pe fiecare
-# resursă, certificarea nerevocată vine prima, ca fișa resursei din frontend să o găsească
-# înaintea celor revocate.
+# Certificările unui utilizator, cu starea din vederea `certification_statuses`, doar pentru
+# resursele din catalog. Pe fiecare resursă, certificarea nerevocată vine prima, ca fișa
+# resursei din frontend să o găsească înaintea celor revocate.
 USER_CERTIFICATIONS_QUERY = text(
     """
     SELECT c.id, c.level, c.status, c.granted_at, c.expires_at, c.revoked_at, c.revoke_reason,
@@ -52,8 +52,8 @@ USER_CERTIFICATIONS_QUERY = text(
     JOIN users u ON u.id = c.user_id
     JOIN resources r ON r.id = c.resource_id
     JOIN users g ON g.id = c.granted_by
-    WHERE c.user_id = :user_id
-    ORDER BY r.name, c.revoked_at IS NOT NULL, c.granted_at DESC, c.id
+    WHERE c.user_id = :user_id AND r.deleted_at IS NULL
+    ORDER BY r.name, r.id, c.revoked_at IS NOT NULL, c.granted_at DESC, c.id
     """
 )
 
