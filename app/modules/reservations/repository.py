@@ -2,11 +2,24 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.modules.reservations.models import Reservation
+from app.modules.maintenance.models import MaintenanceBlock
+from app.modules.reservations.models import Reservation, ReservationStatus
+from app.modules.resources.models import Resource
 from app.modules.users.models import User
+
+# Rezervările care ocupă resursa în calendar: cererile în așteptare, rezervările confirmate și
+# cele în desfășurare (aceleași stări ca în constrângerea `reservations_no_overlap`).
+BLOCKING_RESERVATION_STATUSES = (
+    ReservationStatus.PENDING,
+    ReservationStatus.PENDING_ADMIN,
+    ReservationStatus.CONFIRMED,
+    ReservationStatus.IN_PROGRESS,
+)
+# Blocările de mentenanță care ocupă resursa (programate sau în curs).
+BLOCKING_MAINTENANCE_STATUSES = ("SCHEDULED", "ACTIVE")
 
 # Câmpurile după care se poate sorta lista „Rezervările mele” (`sort=câmp,asc|desc`).
 SORTABLE_COLUMNS = {
@@ -52,6 +65,40 @@ class ReservationRepository:
     def find_by_id(self, reservation_id: int) -> Reservation | None:
         """Întoarce rezervarea cu id-ul dat, cu resursa, proiectul și aprobările, sau `None`."""
         return self._session.get(Reservation, reservation_id)
+
+    def find_resource(self, resource_id: int) -> Resource | None:
+        """Întoarce resursa din catalog (nestearsă) cu id-ul dat, cu regulile ei, sau `None`."""
+        statement = select(Resource).where(
+            Resource.id == resource_id, Resource.deleted_at.is_(None)
+        )
+        return self._session.scalars(statement).first()
+
+    def find_blocking_reservations(
+        self, resource_id: int, start: datetime, end: datetime
+    ) -> Sequence[Reservation]:
+        """Întoarce rezervările care ocupă resursa și se suprapun cu intervalul `[start, end)`."""
+        statement = select(Reservation).where(
+            Reservation.resource_id == resource_id,
+            Reservation.status.in_(BLOCKING_RESERVATION_STATUSES),
+            Reservation.start_at < end,
+            Reservation.end_at > start,
+        )
+        return self._session.scalars(statement).all()
+
+    def find_blocking_maintenance(
+        self, resource_id: int, start: datetime, end: datetime
+    ) -> Sequence[MaintenanceBlock]:
+        """Întoarce blocările de mentenanță care se suprapun cu intervalul `[start, end)`.
+
+        O blocare fără sfârșit (durată nedeterminată) ține până la anulare sau încheiere.
+        """
+        statement = select(MaintenanceBlock).where(
+            MaintenanceBlock.resource_id == resource_id,
+            MaintenanceBlock.status.in_(BLOCKING_MAINTENANCE_STATUSES),
+            MaintenanceBlock.start_at < end,
+            or_(MaintenanceBlock.end_at.is_(None), MaintenanceBlock.end_at > start),
+        )
+        return self._session.scalars(statement).all()
 
     def find_page(
         self, reservation_filter: ReservationFilter, page: int, size: int
