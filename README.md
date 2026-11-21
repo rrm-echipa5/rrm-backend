@@ -73,6 +73,25 @@ createdb rrm
 psql -d rrm -f db/schema.sql -f db/seed.sql
 ```
 
+### Migrări
+
+Odată cu KAN-85 (#10), schema e descrisă în trei locuri care trebuie să rămână identice: `db/schema.sql`, modelele SQLAlchemy (`app/modules/*/models.py`) și migrările Alembic (`migrations/`). `db/schema.sql` rămâne scriptul din care docker compose și CI creează baza cu datele de test, iar CI le leagă pe toate trei: `tests/test_models_schema.py` compară modelele cu baza din `schema.sql`, iar `alembic check` compară migrările cu modelele, pe o bază goală. O modificare a schemei atinge deci toate trei locurile.
+
+Baza din docker compose are deja tabelele din `schema.sql`. Înainte de prima migrare nouă se marchează o singură dată ca fiind la revizia `0001`; altfel primul `alembic upgrade head` încearcă să creeze din nou tabelele și pică:
+
+```bash
+uv run alembic stamp 0001        # o singură dată, pe o bază creată din db/schema.sql
+uv run alembic upgrade head
+```
+
+O migrare nouă:
+
+```bash
+uv run alembic revision --autogenerate -m "descriere"
+uv run alembic upgrade head
+uv run alembic check             # "No new upgrade operations detected."
+```
+
 ## Endpoint-uri
 
 Toate căile au prefixul `/api`. Coloana „Tichet” arată unde a fost adăugat fiecare endpoint. Anularea (KAN-78), calendarul (KAN-70) și certificările (KAN-154) ajung în `main` odată cu PR-urile lor.
@@ -111,7 +130,7 @@ uv run pytest
 | `docker compose up -d` pornește baza, dar după un minut conexiunea dispare (Docker instalat direct în WSL, fără Docker Desktop) | WSL oprește distribuția când nu mai rulează nicio sesiune. Baza se pornește în prim-plan, într-un terminal separat: `wsl -d Ubuntu -- docker compose up`. |
 | Portul `5432` este ocupat | Rulează deja un PostgreSQL local. Se oprește serviciul sau se schimbă portul din `docker-compose.yml` și din `RRM_DATABASE_URL`. |
 | Portul `8080` este ocupat | Pe Windows, `netstat -ano \| findstr :8080` arată procesul. Se oprește procesul sau se pornește backend-ul pe alt port, iar frontend-ul primește adresa în `RRM_API_TARGET` (de exemplu `http://localhost:8081`). |
-| `ruff format --check` raportează toate fișierele pe Windows, deși `git diff` e gol | `core.autocrlf=true` scoate fișierele cu CRLF, iar Ruff cere LF. Se rulează o dată `git config core.autocrlf false`, apoi `git rm -r --cached . && git reset --hard` (doar fără modificări necomise). |
+| `ruff format --check` raportează toate fișierele pe Windows, deși `git diff` e gol | Copia a fost clonată înainte de `.gitattributes` (KAN-159) și are fișiere cu CRLF, iar Ruff cere LF. Clonele noi au LF pe orice sistem. O copie mai veche se repară după ce toate modificările sunt comise (altfel se pierd): `git rm -r --cached . && git reset --hard`. |
 | După rescrierea lui `main` din 16.11, `git pull` dă conflicte sau commit-uri duplicate | Copia locală are istoricul vechi. Fără modificări locale: `git fetch origin`, `git checkout main`, `git reset --hard origin/main`. Un branch început înainte de 16.11 se mută peste noul `main` cu `git rebase --onto origin/main <ultimul-commit-vechi-din-main> <branch>`. |
 | Datele de test nu corespund cu `db/seed.sql` după un `git pull` | Containerul rulează scripturile doar la prima pornire. `docker compose down -v && docker compose up -d` le reîncarcă. |
 
