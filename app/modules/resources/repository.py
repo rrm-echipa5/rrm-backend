@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sqlalchemy import Select, Text, cast, func, or_, select, text
+from sqlalchemy import RowMapping, Select, Text, cast, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.modules.resources.models import Resource, ResourceCategory
@@ -36,6 +36,24 @@ CERTIFIED_RESOURCES_QUERY = text(
     WHERE user_id = :user_id
       AND resource_id = ANY(:resource_ids)
       AND status = 'ACTIVE'
+    """
+)
+
+# Certificările unui utilizator, cu starea din vederea `certification_statuses`, doar pentru
+# resursele din catalog. Pe fiecare resursă, certificarea nerevocată vine prima, ca fișa
+# resursei din frontend să o găsească înaintea celor revocate.
+USER_CERTIFICATIONS_QUERY = text(
+    """
+    SELECT c.id, c.level, c.status, c.granted_at, c.expires_at, c.revoked_at, c.revoke_reason,
+           u.id AS user_id, u.name AS user_name, u.email AS user_email,
+           r.id AS resource_id, r.name AS resource_name,
+           g.id AS granted_by_id, g.name AS granted_by_name, g.email AS granted_by_email
+    FROM certification_statuses c
+    JOIN users u ON u.id = c.user_id
+    JOIN resources r ON r.id = c.resource_id
+    JOIN users g ON g.id = c.granted_by
+    WHERE c.user_id = :user_id AND r.deleted_at IS NULL
+    ORDER BY r.name, r.id, c.revoked_at IS NOT NULL, c.granted_at DESC, c.id
     """
 )
 
@@ -112,6 +130,12 @@ class ResourceRepository:
             {"user_id": user_id, "resource_ids": list(resource_ids)},
         )
         return set(rows)
+
+    def list_user_certifications(self, user_id: int) -> Sequence[RowMapping]:
+        """Întoarce certificările utilizatorului, cu starea lor, ordonate după resursă."""
+        return (
+            self._session.execute(USER_CERTIFICATIONS_QUERY, {"user_id": user_id}).mappings().all()
+        )
 
     def has_active_reservations(self, resource_id: int) -> bool:
         """Verifică dacă resursa are cereri în așteptare sau rezervări care nu s-au încheiat."""
