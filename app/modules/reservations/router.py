@@ -101,7 +101,9 @@ def get_resource_calendar(
                 )
             ]
         )
-    if end - start > MAX_CALENDAR_RANGE:
+    # Durata se măsoară pe ora locală trimisă de client, ca o lună cu schimbarea orei
+    # (de exemplu octombrie, +03:00 -> +02:00) să încapă în cele 31 de zile.
+    if end.replace(tzinfo=None) - start.replace(tzinfo=None) > MAX_CALENDAR_RANGE:
         raise ValidationFailedError(
             [FieldError(field="end", message="Intervalul poate avea cel mult 31 de zile.")]
         )

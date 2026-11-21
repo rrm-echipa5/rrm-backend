@@ -96,7 +96,11 @@ class ReservationService:
             resource=ResourceRef.model_validate(resource),
             start=start,
             end=end,
-            rules=UsageRuleSummary.model_validate(resource.usage_rule),
+            rules=(
+                UsageRuleSummary.model_validate(resource.usage_rule)
+                if resource.usage_rule is not None
+                else None
+            ),
             entries=entries,
         )
 
