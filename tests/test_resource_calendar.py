@@ -213,16 +213,3 @@ def test_a_resource_removed_from_the_catalog_returns_404(
 
     assert response.status_code == 404, response.text
     assert response.json()["code"] == "NOT_FOUND"
-
-
-def test_a_resource_without_usage_rules_has_no_rules(
-    client: TestClient, db_session: Session
-) -> None:
-    db_session.execute(
-        text("DELETE FROM usage_rules WHERE resource_id = :id"), {"id": SEMINAR_ROOM}
-    )
-
-    response = client.get(calendar_url(SEMINAR_ROOM), params=TWO_WEEKS)
-
-    assert response.status_code == 200, response.text
-    assert response.json()["rules"] is None

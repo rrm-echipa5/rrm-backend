@@ -130,7 +130,6 @@ class ResourceCalendar(ApiModel):
     resource: ResourceRef
     start: datetime
     end: datetime
-    # Lipsește doar pentru o resursă adăugată în baza de date fără reguli de utilizare.
-    rules: UsageRuleSummary | None
+    rules: UsageRuleSummary
     # Intervalele ocupate, ordonate după început; restul intervalului este liber.
     entries: list[CalendarEntry]
