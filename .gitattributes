@@ -1,0 +1,3 @@
+# Fișierele text au LF pe orice sistem (pe Windows, core.autocrlf=true le-ar scoate cu CRLF
+# și Prettier / ruff format le-ar raporta ca neformatate).
+* text=auto eol=lf
