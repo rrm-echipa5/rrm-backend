@@ -1,6 +1,6 @@
 """Schemele JSON ale resurselor, cu aceleași nume și limite ca în `rrm-api.yaml`."""
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated
 
@@ -145,6 +145,36 @@ class ResourceSummaryPage(ApiModel):
 
     content: list[ResourceSummary]
     page: PageMeta
+
+
+class ResourceRef(ApiModel):
+    """Referința la o resursă (`ResourceRef`)."""
+
+    id: int
+    name: str
+
+
+class CertificationStatus(StrEnum):
+    """Starea unei certificări (`CertificationStatus`), din vederea `certification_statuses`."""
+
+    ACTIVE = "ACTIVE"
+    EXPIRED = "EXPIRED"
+    REVOKED = "REVOKED"
+
+
+class CertificationOut(ApiModel):
+    """Certificarea unui utilizator pentru o resursă (`Certification`)."""
+
+    id: int
+    user: UserRef
+    resource: ResourceRef
+    level: int
+    status: CertificationStatus
+    granted_at: datetime
+    granted_by: UserRef
+    expires_at: date | None
+    revoked_at: datetime | None
+    revoke_reason: str | None
 
 
 Tag = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]

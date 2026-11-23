@@ -8,6 +8,7 @@ from app.core.errors import PROBLEM_MEDIA_TYPE, Problem
 from app.db.session import get_session
 from app.modules.resources.repository import ResourceFilter, ResourceRepository
 from app.modules.resources.schemas import (
+    CertificationOut,
     ResourceCategoryOut,
     ResourceDetail,
     ResourceStatus,
@@ -46,6 +47,15 @@ Service = Annotated[ResourceService, Depends(get_resource_service)]
 def list_resource_categories(service: Service) -> list[ResourceCategoryOut]:
     """Categoriile de resurse, pentru filtrarea catalogului și formularul fișei."""
     return service.list_categories()
+
+
+@router.get("/users/me/certifications")
+def list_my_certifications(service: Service) -> list[CertificationOut]:
+    """Certificările utilizatorului curent, pentru toate resursele, cu starea lor.
+
+    Fișa resursei o folosește pe cea pentru resursa afișată; lista apare și în profil.
+    """
+    return service.list_my_certifications()
 
 
 @router.get("/resources", responses=PROBLEM_RESPONSES)
