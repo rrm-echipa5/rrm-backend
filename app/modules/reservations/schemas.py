@@ -2,8 +2,9 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import Field
+from pydantic import Field, StringConstraints
 
 from app.modules.reservations.models import ReservationStatus
 from app.modules.resources.schemas import ApiModel, ApprovalFlow, PageMeta, UserRef
@@ -76,6 +77,12 @@ class ReservationSummaryPage(ApiModel):
 
     content: list[ReservationSummary]
     page: PageMeta
+
+
+class CancelReservationRequest(ApiModel):
+    """Corpul opțional al anulării (`CancelReservationRequest`)."""
+
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)] | None = None
 
 
 class ReservationOut(ReservationSummary):

@@ -11,6 +11,7 @@ from app.db.session import get_session
 from app.modules.reservations.models import ReservationStatus
 from app.modules.reservations.repository import ReservationFilter, ReservationRepository
 from app.modules.reservations.schemas import (
+    CancelReservationRequest,
     ReservationOut,
     ReservationSummaryPage,
     ResourceCalendar,
@@ -79,6 +80,19 @@ def get_reservation(reservation_id: ReservationId, service: Service) -> Reservat
     `SYSTEM_ADMIN`.
     """
     return service.get_reservation(reservation_id)
+
+
+@router.post("/reservations/{reservation_id}/cancel", responses=PROBLEM_RESPONSES)
+def cancel_reservation(
+    reservation_id: ReservationId,
+    service: Service,
+    body: CancelReservationRequest | None = None,
+) -> ReservationOut:
+    """Anulează o cerere `PENDING` / `PENDING_ADMIN` sau o rezervare `CONFIRMED`.
+
+    Motivul este opțional. Roluri: solicitantul, coordonatorul echipei proiectului.
+    """
+    return service.cancel_reservation(reservation_id, body.reason if body else None)
 
 
 @router.get("/resources/{resource_id}/calendar", responses=PROBLEM_RESPONSES)

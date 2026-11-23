@@ -76,3 +76,12 @@ jobs:
       - name: Schema și datele de test
         run: psql postgresql://rrm:rrm@localhost:5432/rrm -v ON_ERROR_STOP=1 -q -f db/schema.sql -f db/seed.sql
       - run: uv run pytest
+      # Testul de mai sus compară modelele cu baza din schema.sql; aici se verifică lanțul de
+      # migrări: pe o bază goală, `alembic check` pică dacă un model nu are migrare.
+      - name: Migrările Alembic pe o bază goală
+        env:
+          RRM_DATABASE_URL: postgresql+psycopg://rrm:rrm@localhost:5432/rrm_alembic
+        run: |
+          psql postgresql://rrm:rrm@localhost:5432/rrm -v ON_ERROR_STOP=1 -q -c "CREATE DATABASE rrm_alembic"
+          uv run alembic upgrade head
+          uv run alembic check

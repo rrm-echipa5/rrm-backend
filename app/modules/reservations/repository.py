@@ -6,6 +6,7 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.modules.maintenance.models import MaintenanceBlock
+from app.modules.notifications.models import Notification
 from app.modules.reservations.models import Reservation, ReservationStatus
 from app.modules.resources.models import Resource
 from app.modules.users.models import User
@@ -49,7 +50,7 @@ class ReservationFilter:
 
 
 class ReservationRepository:
-    """Citește rezervările din PostgreSQL.
+    """Citește și scrie rezervările în PostgreSQL.
 
     Args:
         session: Sesiunea SQLAlchemy a cererii curente.
@@ -65,6 +66,29 @@ class ReservationRepository:
     def find_by_id(self, reservation_id: int) -> Reservation | None:
         """Întoarce rezervarea cu id-ul dat, cu resursa, proiectul și aprobările, sau `None`."""
         return self._session.get(Reservation, reservation_id)
+
+    def find_by_id_for_update(self, reservation_id: int) -> Reservation | None:
+        """Ca `find_by_id`, dar blochează rândul până la commit.
+
+        Astfel, o anulare și o aprobare trimise în același timp nu pot schimba amândouă
+        statusul pornind de la aceeași stare.
+        """
+        statement = (
+            select(Reservation)
+            .where(Reservation.id == reservation_id)
+            .with_for_update(of=Reservation)
+            .execution_options(populate_existing=True)
+        )
+        return self._session.scalars(statement).first()
+
+    def add_notifications(self, notifications: Sequence[Notification]) -> None:
+        """Adaugă notificările; se salvează la următorul commit."""
+        self._session.add_all(notifications)
+
+    def commit_and_refresh(self, reservation: Reservation) -> None:
+        """Salvează modificările și reîncarcă rezervarea."""
+        self._session.commit()
+        self._session.refresh(reservation)
 
     def find_resource(self, resource_id: int) -> Resource | None:
         """Întoarce resursa din catalog (nestearsă) cu id-ul dat, cu regulile ei, sau `None`."""
