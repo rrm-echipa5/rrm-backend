@@ -13,13 +13,16 @@ from app.core.errors import (
 from app.modules.resources.models import Resource, UsageRule
 from app.modules.resources.repository import ResourceFilter, ResourceRepository
 from app.modules.resources.schemas import (
+    CertificationOut,
     PageMeta,
     ResourceCategoryOut,
     ResourceDetail,
+    ResourceRef,
     ResourceStatus,
     ResourceSummary,
     ResourceSummaryPage,
     ResourceWriteRequest,
+    UserRef,
 )
 from app.modules.users.models import Role
 
@@ -54,6 +57,28 @@ class ResourceService:
     def list_categories(self) -> list[ResourceCategoryOut]:
         """Întoarce categoriile de resurse."""
         return [ResourceCategoryOut.model_validate(c) for c in self._repository.list_categories()]
+
+    def list_my_certifications(self) -> list[CertificationOut]:
+        """Întoarce certificările utilizatorului curent, pentru toate resursele."""
+        return [
+            CertificationOut(
+                id=row["id"],
+                user=UserRef(id=row["user_id"], name=row["user_name"], email=row["user_email"]),
+                resource=ResourceRef(id=row["resource_id"], name=row["resource_name"]),
+                level=row["level"],
+                status=row["status"],
+                granted_at=row["granted_at"],
+                granted_by=UserRef(
+                    id=row["granted_by_id"],
+                    name=row["granted_by_name"],
+                    email=row["granted_by_email"],
+                ),
+                expires_at=row["expires_at"],
+                revoked_at=row["revoked_at"],
+                revoke_reason=row["revoke_reason"],
+            )
+            for row in self._repository.list_user_certifications(self._current_user_id)
+        ]
 
     def list_resources(
         self, resource_filter: ResourceFilter, page: int, size: int
