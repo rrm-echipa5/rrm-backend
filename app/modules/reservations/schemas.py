@@ -98,3 +98,45 @@ class ReservationOut(ReservationSummary):
     created_at: datetime
     cancellation: Cancellation | None = None
     approvals: list[ApprovalOut]
+
+
+class CalendarEntryType(StrEnum):
+    """Ce ocupă un interval din calendar; `PENDING` include și `PENDING_ADMIN`."""
+
+    CONFIRMED = "CONFIRMED"
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    MAINTENANCE = "MAINTENANCE"
+
+
+class CalendarEntry(ApiModel):
+    """Un interval ocupat din calendarul resursei (`CalendarEntry`)."""
+
+    start: datetime
+    end: datetime
+    type: CalendarEntryType
+    # Dacă intervalul este o rezervare a utilizatorului curent.
+    own: bool
+    # Doar pentru rezervările proprii; `None` pentru ale altora și pentru mentenanță.
+    reservation_id: int | None = None
+
+
+class UsageRuleSummary(ApiModel):
+    """Regulile de utilizare de care ține cont calendarul (`UsageRuleSummary`)."""
+
+    min_duration_minutes: int
+    max_duration_minutes: int
+    break_between_minutes: int
+    check_in_deadline_minutes: int
+    required_certification_level: int | None
+
+
+class ResourceCalendar(ApiModel):
+    """Calendarul disponibilității unei resurse (`ResourceCalendar`)."""
+
+    resource: ResourceRef
+    start: datetime
+    end: datetime
+    rules: UsageRuleSummary
+    # Intervalele ocupate, ordonate după început; restul intervalului este liber.
+    entries: list[CalendarEntry]

@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
@@ -13,6 +14,7 @@ from app.modules.reservations.schemas import (
     CancelReservationRequest,
     ReservationOut,
     ReservationSummaryPage,
+    ResourceCalendar,
 )
 from app.modules.reservations.service import ReservationService
 from app.modules.resources.router import PROBLEM_RESPONSES
@@ -20,6 +22,10 @@ from app.modules.resources.router import PROBLEM_RESPONSES
 router = APIRouter(tags=["Rezervări"])
 
 ReservationId = Annotated[int, Path(ge=1, description="Identificatorul rezervării.")]
+ResourceId = Annotated[int, Path(ge=1, description="Identificatorul resursei.")]
+
+# Cel mai lung interval pe care îl poate cere calendarul (`GET /resources/{id}/calendar`).
+MAX_CALENDAR_RANGE = timedelta(days=31)
 
 
 def get_reservation_service(
@@ -87,3 +93,32 @@ def cancel_reservation(
     Motivul este opțional. Roluri: solicitantul, coordonatorul echipei proiectului.
     """
     return service.cancel_reservation(reservation_id, body.reason if body else None)
+
+
+@router.get("/resources/{resource_id}/calendar", responses=PROBLEM_RESPONSES)
+def get_resource_calendar(
+    resource_id: ResourceId,
+    service: Service,
+    start: Annotated[AwareDatetime, Query(description="Începutul intervalului (inclus).")],
+    end: Annotated[AwareDatetime, Query(description="Sfârșitul intervalului (exclus).")],
+) -> ResourceCalendar:
+    """Intervalele ocupate ale resursei între `start` și `end`, cu regulile de utilizare.
+
+    Intervalele care nu apar sunt libere; intervalul cerut are cel mult 31 de zile.
+    Roluri: orice utilizator autentificat.
+    """
+    if end <= start:
+        raise ValidationFailedError(
+            [
+                FieldError(
+                    field="end", message="Sfârșitul intervalului trebuie să fie după început."
+                )
+            ]
+        )
+    # Durata se măsoară pe ora locală trimisă de client, ca o lună cu schimbarea orei
+    # (de exemplu octombrie, +03:00 -> +02:00) să încapă în cele 31 de zile.
+    if end.replace(tzinfo=None) - start.replace(tzinfo=None) > MAX_CALENDAR_RANGE:
+        raise ValidationFailedError(
+            [FieldError(field="end", message="Intervalul poate avea cel mult 31 de zile.")]
+        )
+    return service.get_calendar(resource_id, start, end)
